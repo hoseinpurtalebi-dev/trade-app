@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>دفتر معاملات ارز (آفلاین)</title>
+  <style>
+    :root { --b:#e5e7eb; --t:#111827; --m:#6b7280; --g:#10b981; --r:#ef4444; --bg:#f9fafb; }
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial; margin:0; background:var(--bg); color:var(--t);}
+    header{position:sticky; top:0; background:white; border-bottom:1px solid var(--b); padding:12px 14px; z-index:10;}
+    h1{font-size:16px; margin:0 0 8px 0;}
+    .row{display:flex; gap:8px; flex-wrap:wrap;}
+    .row > *{flex:1 1 140px;}
+    input,select,button{font-size:14px; padding:10px; border:1px solid var(--b); border-radius:10px; background:white;}
+    button{cursor:pointer; border:1px solid #d1d5db; touch-action:manipulation;}
+    button.primary{background:#111827; color:white; border-color:#111827;}
+    button.danger{background:#fee2e2; border-color:#fecaca;}
+    .hint{font-size:12px; color:var(--m); margin-top:8px; line-height:1.4;}
+    main{padding:12px 14px;}
+    .card{background:white; border:1px solid var(--b); border-radius:14px; padding:12px; margin-bottom:12px;}
+    table{width:100%; border-collapse:separate; border-spacing:0;}
+    th,td{font-size:12px; padding:10px 8px; border-bottom:1px solid var(--b); vertical-align:top;}
+    th{color:var(--m); text-align:right; background:#fafafa;}
+    tr:last-child td{border-bottom:none;}
+    .pill{display:inline-block; padding:3px 8px; border-radius:999px; font-size:11px; border:1px solid var(--b); color:var(--m);}
+    .pos{color:var(--g); font-weight:600;}
+    .neg{color:var(--r); font-weight:600;}
+    .actions{display:flex; gap:6px; flex-wrap:wrap;}
+    .actions button{padding:8px 10px; border-radius:10px;}
+    .small{font-size:12px; color:var(--m);}
+    .mono{font-variant-numeric: tabular-nums; font-feature-settings:"tnum" 1;}
+    .nowrap{white-space:nowrap;}
+    dialog{border:none; border-radius:16px; padding:0; width:min(560px, 92vw);}
+    dialog::backdrop{background:rgba(0,0,0,.35);}
+    .dlg{padding:12px;}
+    .dlg header{position:unset; border:none; padding:0 0 10px 0;}
+    .dlg h2{margin:0; font-size:15px;}
+    .noteTop{display:block; font-size:11px; color:var(--m); margin-bottom:4px; line-height:1.2;}
+
+    .statsGrid{display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:8px;}
+    .statBox{border:1px solid var(--b); border-radius:12px; padding:10px; background:#fff;}
+    .statBox .k{font-size:11px; color:var(--m); margin-bottom:4px;}
+    .statBox .v{font-size:16px; font-weight:700;}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>دفتر معاملات ارز (آفلاین)</h1>
+
+    <div class="row">
+      <input id="note" placeholder="توضیحات (اختیاری)">
+      <input id="asset" list="assetList" placeholder="نام دارایی (مثلاً BTC)" autocomplete="off">
+      <datalist id="assetList"></datalist>
+    </div>
+
+    <div class="row" style="margin-top:8px">
+      <input id="jdate" placeholder="تاریخ خرید (YYYY/MM/DD)">
+      <input id="qty" inputmode="decimal" type="text" placeholder="مقدار (Quantity)">
+      <input id="buy" inputmode="decimal" type="text" placeholder="قیمت خرید (هر واحد)">
+    </div>
+
+    <div class="row" style="margin-top:8px">
+      <input id="sell" inputmode="decimal" type="text" placeholder="قیمت فروش (هر واحد) - اختیاری">
+      <input id="sellJdate" placeholder="تاریخ فروش (YYYY/MM/DD) - اختیاری">
+      <input id="fee" inputmode="decimal" type="text" placeholder="کارمزد (مثلاً .001 = 0.1%)">
+      <button class="primary" id="addBtn" type="button">ثبت معامله</button>
+    </div>
+
+    <div class="row" style="margin-top:8px">
+      <input id="filter" placeholder="فیلتر دارایی (همه)" autocomplete="off">
+      <select id="statusFilter">
+        <option value="all">همه معاملات</option>
+        <option value="open">فقط معاملات باز</option>
+        <option value="closed">فقط معاملات بسته</option>
+      </select>
+      <select id="sort">
+        <option value="new">جدیدترین</option>
+        <option value="old">قدیمی‌ترین</option>
+        <option value="asset">نام دارایی</option>
+        <option value="pnl">سود/زیان</option>
+      </select>
+      <!-- ✅ دکمه پاک کردن همه حذف شد -->
+    </div>
+
+    <div class="hint">
+      فرمول کارمزد: خریدنهایی = خرید×(۱+کارمزد) ، فروش‌نهایی = فروش×(۱-کارمزد). اگر فروش خالی باشد ⇒ «ادامه دارد».<br>
+      نمایش اعشار: <span class="mono">.04</span> — اعداد هم سه‌رقم سه‌رقم جدا می‌شوند.
+    </div>
+  </header>
+
+  <main>
+    <div class="card">
+      <div class="statsGrid">
+        <div class="statBox">
+          <div class="k">جمع سود/زیان (براساس فیلتر)</div>
+          <div id="totalPnl" class="v mono">0</div>
+        </div>
+        <div class="statBox">
+          <div class="k">تعداد معاملات سودده (بسته‌شده)</div>
+          <div id="cntWin" class="v mono">0</div>
+        </div>
+        <div class="statBox">
+          <div class="k">تعداد معاملات ضررده (بسته‌شده)</div>
+          <div id="cntLose" class="v mono">0</div>
+        </div>
+        <div class="statBox">
+          <div class="k">جمع خرید نهایی (ورودی پول)</div>
+          <div id="totalIn" class="v mono">0</div>
+        </div>
+        <div class="statBox">
+          <div class="k">جمع فروش نهایی</div>
+          <div id="totalOut" class="v mono">0</div>
+        </div>
+      </div>
+      <div class="small" style="margin-top:8px" id="count">0 ردیف</div>
+    </div>
+
+    <div class="card" style="overflow:auto; -webkit-overflow-scrolling:touch;">
+      <table>
+        <thead>
+          <tr>
+            <th class="nowrap">توضیحات / دارایی</th>
+            <th class="nowrap">تاریخ خرید</th>
+            <th class="nowrap">تاریخ فروش</th>
+            <th class="nowrap">مقدار</th>
+            <th class="nowrap">خرید نهایی</th>
+            <th class="nowrap">فروش نهایی</th>
+            <th class="nowrap">جمع خرید نهایی</th>
+            <th class="nowrap">جمع فروش نهایی</th>
+            <th class="nowrap">P/L</th>
+            <th class="nowrap">عملیات</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <dialog id="editDlg">
+    <div class="dlg">
+      <header>
+        <h2>ویرایش ردیف</h2>
+        <div class="small" id="editMeta"></div>
+      </header>
+
+      <input id="eNote" placeholder="توضیحات (اختیاری)">
+
+      <div class="row" style="margin-top:8px">
+        <input id="eAsset" list="assetList" placeholder="دارایی">
+        <input id="eJdate" placeholder="تاریخ خرید (YYYY/MM/DD)">
+      </div>
+
+      <div class="row" style="margin-top:8px">
+        <input id="eSell" inputmode="decimal" type="text" placeholder="قیمت فروش (اختیاری)">
+        <input id="eSellJdate" placeholder="تاریخ فروش (YYYY/MM/DD) - اختیاری">
+      </div>
+
+      <div class="row" style="margin-top:8px">
+        <input id="eQty" inputmode="decimal" type="text" placeholder="مقدار">
+        <input id="eBuy" inputmode="decimal" type="text" placeholder="قیمت خرید">
+        <input id="eFee" inputmode="decimal" type="text" placeholder="کارمزد">
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <button class="primary" id="saveEdit" type="button">ذخیره</button>
+        <button id="cancelEdit" type="button">انصراف</button>
+      </div>
+      <div class="hint">اگر فروش را خالی بگذاری یعنی معامله هنوز بسته نشده.</div>
+    </div>
+  </dialog>
+
+<script>
+(() => {
+  // ✅ این روش (onclick مستقیم) روی iPhone مطمئن‌تره
+  window.APP = {}; // برای دکمه‌های جدول
+
+  const LS_KEY = "crypto_trades_v7";
+  let trades = load();
+
+  const $ = (id) => document.getElementById(id);
+
+  const noteEl = $("note");
+  const assetEl = $("asset");
+  const jdateEl = $("jdate");
+  const sellJdateEl = $("sellJdate");
+  const qtyEl = $("qty");
+  const buyEl = $("buy");
+  const sellEl = $("sell");
+  const feeEl = $("fee");
+  const addBtn = $("addBtn");
+
+  const filterEl = $("filter");
+  const statusFilterEl = $("statusFilter");
+  const sortEl = $("sort");
+  const tbody = $("tbody");
+
+  const totalPnlEl = $("totalPnl");
+  const cntWinEl = $("cntWin");
+  const cntLoseEl = $("cntLose");
+  const totalInEl = $("totalIn");
+  const totalOutEl = $("totalOut");
+  const countEl = $("count");
+
+  const editDlg = $("editDlg");
+  const eNote = $("eNote");
+  const eAsset = $("eAsset");
+  const eJdate = $("eJdate");
+  const eSell = $("eSell");
+  const eSellJdate = $("eSellJdate");
+  const eQty = $("eQty");
+  const eBuy = $("eBuy");
+  const eFee = $("eFee");
+  const editMeta = $("editMeta");
+  const saveEdit = $("saveEdit");
+  const cancelEdit = $("cancelEdit");
+
+  if (!jdateEl.value) jdateEl.value = todayJalali();
+
+  // ---- input formatting (3-digit grouping) ----
+  const numericInputs = [qtyEl, buyEl, sellEl, feeEl, eQty, eBuy, eSell, eFee];
+  numericInputs.forEach(el => {
+    el.addEventListener("focus", () => { el.value = String(el.value || "").replace(/,/g, ""); });
+    el.addEventListener("blur", () => {
+      const s = String(el.value || "").trim();
+      if (!s) return;
+      const n = toNum(s);
+      if (!Number.isFinite(n)) return;
+      el.value = fmt(n);
+    });
+  });
+
+  // ---- Add ----
+  addBtn.addEventListener("click", () => {
+    const note = (noteEl.value || "").trim();
+    const asset = (assetEl.value || "").trim();
+    const jdate = normalizeJDate((jdateEl.value || "").trim()) || todayJalali();
+
+    const qty = toNum(qtyEl.value);
+    const buy = toNum(buyEl.value);
+    const sell = sellEl.value === "" ? null : toNum(sellEl.value);
+    const fee = feeEl.value === "" ? 0 : toNum(feeEl.value);
+    const sellJdate = normalizeJDate((sellJdateEl.value || "").trim());
+
+    if (!asset) return alert("نام دارایی را وارد کن.");
+    if (!(qty > 0)) return alert("مقدار باید بزرگ‌تر از صفر باشد.");
+    if (!(buy > 0)) return alert("قیمت خرید باید بزرگ‌تر از صفر باشد.");
+    if (!(fee >= 0)) return alert("کارمزد نمی‌تواند منفی باشد.");
+    if (sell !== null && !(sell > 0)) return alert("قیمت فروش اگر وارد شد باید بزرگ‌تر از صفر باشد.");
+
+    const finalSellJdate = (sell !== null) ? (sellJdate || todayJalali()) : "";
+
+    trades.unshift({
+      id: cryptoId(),
+      note,
+      asset,
+      jdate,
+      sellJdate: finalSellJdate,
+      qty,
+      buy,
+      sell,
+      fee,
+      createdAt: Date.now()
+    });
+
+    save();
+    noteEl.value = ""; qtyEl.value=""; buyEl.value=""; sellEl.value=""; sellJdateEl.value=""; assetEl.value="";
+    if (!jdateEl.value) jdateEl.value = todayJalali();
+    assetEl.focus();
+
+    refreshAssets();
+    render();
+  });
+
+  // ---- Filters / sort ----
+  filterEl.addEventListener("input", render);
+  statusFilterEl.addEventListener("change", render);
+  sortEl.addEventListener("change", render);
+
+  // ---- Edit dialog ----
+  let editingId = null;
+
+  cancelEdit.addEventListener("click", () => { editingId = null; editDlg.close(); });
+
+  saveEdit.addEventListener("click", () => {
+    const idx = trades.findIndex(t => t.id === editingId);
+    if (idx < 0) return;
+
+    const note = (eNote.value || "").trim();
+    const asset = (eAsset.value || "").trim();
+    const jdate = normalizeJDate((eJdate.value || "").trim()) || trades[idx].jdate || todayJalali();
+
+    const qty = toNum(eQty.value);
+    const buy = toNum(eBuy.value);
+    const sell = eSell.value === "" ? null : toNum(eSell.value);
+    const fee = eFee.value === "" ? 0 : toNum(eFee.value);
+
+    const sellJdate = normalizeJDate((eSellJdate.value || "").trim());
+    const finalSellJdate = (sell !== null) ? (sellJdate || trades[idx].sellJdate || todayJalali()) : "";
+
+    if (!asset) return alert("نام دارایی را وارد کن.");
+    if (!(qty > 0)) return alert("مقدار باید بزرگ‌تر از صفر باشد.");
+    if (!(buy > 0)) return alert("قیمت خرید باید بزرگ‌تر از صفر باشد.");
+    if (!(fee >= 0)) return alert("کارمزد نمی‌تواند منفی باشد.");
+    if (sell !== null && !(sell > 0)) return alert("قیمت فروش اگر وارد شد باید بزرگ‌تر از صفر باشد.");
+
+    trades[idx] = { ...trades[idx], note, asset, jdate, sellJdate: finalSellJdate, qty, buy, sell, fee };
+    save();
+    refreshAssets();
+    render();
+    editingId = null;
+    editDlg.close();
+  });
+
+  function openEdit(id){
+    const t = trades.find(x => x.id === id);
+    if (!t) return;
+    editingId = id;
+
+    eNote.value = t.note || "";
+    eAsset.value = t.asset || "";
+    eJdate.value = t.jdate || todayJalali();
+    eQty.value = fmt(t.qty);
+    eBuy.value = fmt(t.buy);
+    eSell.value = (t.sell == null) ? "" : fmt(t.sell);
+    eSellJdate.value = (t.sell == null) ? "" : (t.sellJdate || todayJalali());
+    eFee.value = fmt(t.fee ?? 0);
+
+    editMeta.textContent = "ثبت شده: " + todayJalaliFromTs(t.createdAt);
+    editDlg.showModal();
+  }
+
+  function deleteTrade(id){
+    if (!confirm("این ردیف حذف شود؟")) return;
+    trades = trades.filter(t => t.id !== id);
+    save();
+    refreshAssets();
+    render();
+  }
+
+  // ✅ دکمه‌های جدول با onclick مستقیم
+  window.APP.edit = (id) => openEdit(id);
+  window.APP.del  = (id) => deleteTrade(id);
+
+  function calcRow(t){
+    const buyFinal = t.buy * (1 + (t.fee || 0));
+    const sellFinal = (t.sell == null) ? null : (t.sell * (1 - (t.fee || 0)));
+    const sumBuyFinal = buyFinal * t.qty;
+    const sumSellFinal = sellFinal == null ? null : sellFinal * t.qty;
+    const pnl = sumSellFinal == null ? null : (sumSellFinal - sumBuyFinal);
+    return { buyFinal, sellFinal, sumBuyFinal, sumSellFinal, pnl };
+  }
+
+  function render(){
+    const assetFilter = (filterEl.value || "").trim().toLowerCase();
+    const statusFilter = statusFilterEl.value;
+
+    let list = trades.slice();
+
+    if (assetFilter){
+      list = list.filter(t => (t.asset || "").toLowerCase().includes(assetFilter));
+    }
+    if (statusFilter === "open") list = list.filter(t => t.sell == null);
+    if (statusFilter === "closed") list = list.filter(t => t.sell != null);
+
+    const sort = sortEl.value;
+    if (sort === "old") list.sort((a,b) => a.createdAt - b.createdAt);
+    else if (sort === "asset") list.sort((a,b) => (a.asset||"").localeCompare(b.asset||"", "fa"));
+    else if (sort === "pnl") {
+      list.sort((a,b) => {
+        const pa = calcRow(a).pnl; const pb = calcRow(b).pnl;
+        return (pb ?? -Infinity) - (pa ?? -Infinity);
+      });
+    }
+
+    tbody.innerHTML = "";
+
+    let totalPnl = 0, totalIn = 0, totalOut = 0, wins = 0, losses = 0;
+
+    for (const t of list){
+      const c = calcRow(t);
+
+      totalIn += c.sumBuyFinal;
+      if (c.sumSellFinal != null) totalOut += c.sumSellFinal;
+
+      if (c.pnl != null){
+        totalPnl += c.pnl;
+        if (c.pnl > 0) wins++;
+        else if (c.pnl < 0) losses++;
+      }
+
+      const status = t.sell == null ? `<span class="pill">ادامه دارد</span>` : `<span class="pill">بسته شد</span>`;
+      const pnlStr = (c.pnl == null) ? "—" : fmt(c.pnl);
+      const pnlClass = (c.pnl == null) ? "" : (c.pnl >= 0 ? "pos" : "neg");
+      const noteHtml = t.note ? `<span class="noteTop">${escapeHtml(t.note)}</span>` : `<span class="noteTop">—</span>`;
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>
+          ${noteHtml}
+          <div class="mono">${escapeHtml(t.asset)}</div>
+          ${status}
+        </td>
+        <td class="mono nowrap">${escapeHtml(t.jdate || "")}</td>
+        <td class="mono nowrap">${t.sell == null ? "—" : escapeHtml(t.sellJdate || "")}</td>
+        <td class="mono nowrap">${fmt(t.qty)}</td>
+        <td class="mono nowrap">${fmt(c.buyFinal)}</td>
+        <td class="mono nowrap">${c.sellFinal == null ? "—" : fmt(c.sellFinal)}</td>
+        <td class="mono nowrap">${fmt(c.sumBuyFinal)}</td>
+        <td class="mono nowrap">${c.sumSellFinal == null ? "—" : fmt(c.sumSellFinal)}</td>
+        <td class="mono nowrap ${pnlClass}">${pnlStr}</td>
+        <td>
+          <div class="actions">
+            <button type="button" onclick="APP.edit('${t.id}')">ویرایش</button>
+            <button type="button" class="danger" onclick="APP.del('${t.id}')">حذف</button>
+          </div>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    totalPnlEl.textContent = fmt(totalPnl);
+    totalPnlEl.className = "v mono " + (totalPnl >= 0 ? "pos" : "neg");
+    cntWinEl.textContent = String(wins);
+    cntLoseEl.textContent = String(losses);
+    totalInEl.textContent = fmt(totalIn);
+    totalOutEl.textContent = fmt(totalOut);
+    countEl.textContent = `${list.length} ردیف`;
+  }
+
+  function refreshAssets(){
+    const assets = Array.from(new Set(trades.map(t => (t.asset||"").trim()).filter(Boolean)))
+      .sort((a,b)=>a.localeCompare(b,"fa"));
+    const dl = $("assetList");
+    dl.innerHTML = assets.map(a => `<option value="${escapeHtml(a)}"></option>`).join("");
+  }
+
+  function load(){
+    try{
+      const raw = localStorage.getItem(LS_KEY);
+      if (!raw) return [];
+      const data = JSON.parse(raw);
+      if (Array.isArray(data)) return data;
+      if (data && Array.isArray(data.trades)) return data.trades;
+      return [];
+    } catch { return []; }
+  }
+  function save(){ localStorage.setItem(LS_KEY, JSON.stringify(trades)); }
+
+  function toNum(v){
+    const s = String(v ?? "").trim()
+      .replace(/,/g, "")
+      .replace("٬","")
+      .replace("،",".")
+      .replace("٫",".");
+    if (s === "") return NaN;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : NaN;
+  }
+
+  function fmt(n){
+    if (!Number.isFinite(n)) return "—";
+    if (Object.is(n, -0)) n = 0;
+
+    const abs = Math.abs(n);
+    let s;
+    if (abs >= 1000) s = n.toLocaleString("en-US", { useGrouping:true, maximumFractionDigits: 2 });
+    else if (abs >= 1) s = n.toLocaleString("en-US", { useGrouping:true, maximumFractionDigits: 8 });
+    else s = n.toLocaleString("en-US", { useGrouping:true, maximumFractionDigits: 12 });
+
+    if (abs > 0 && abs < 1){
+      s = s.replace(/^0\./, ".").replace(/^-0\./, "-.");
+    }
+    return s;
+  }
+
+  function todayJalali(){
+    const parts = new Intl.DateTimeFormat("fa-IR-u-ca-persian", {
+      year:"numeric", month:"2-digit", day:"2-digit"
+    }).formatToParts(new Date());
+    const y = toLatin(parts.find(p=>p.type==="year")?.value || "");
+    const m = toLatin(parts.find(p=>p.type==="month")?.value || "");
+    const d = toLatin(parts.find(p=>p.type==="day")?.value || "");
+    return `${y}/${m}/${d}`;
+  }
+
+  function todayJalaliFromTs(ts){
+    try{
+      const parts = new Intl.DateTimeFormat("fa-IR-u-ca-persian", {
+        year:"numeric", month:"2-digit", day:"2-digit"
+      }).formatToParts(new Date(ts));
+      const y = toLatin(parts.find(p=>p.type==="year")?.value || "");
+      const m = toLatin(parts.find(p=>p.type==="month")?.value || "");
+      const d = toLatin(parts.find(p=>p.type==="day")?.value || "");
+      return `${y}/${m}/${d}`;
+    } catch { return ""; }
+  }
+
+  function normalizeJDate(s){
+    if (!s) return "";
+    const t = toLatin(s).replace(/[-.]/g,"/").replace(/\s+/g,"");
+    const m = t.match(/^(\d{3,4})\/(\d{1,2})\/(\d{1,2})$/);
+    if (!m) return t;
+    const yy = m[1];
+    const mm = m[2].padStart(2,"0");
+    const dd = m[3].padStart(2,"0");
+    return `${yy}/${mm}/${dd}`;
+  }
+
+  function toLatin(s){
+    return String(s)
+      .replace(/[۰-۹]/g, d => "۰۱۲۳۴۵۶۷۸۹".indexOf(d))
+      .replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d));
+  }
+
+  function cryptoId(){
+    return (Date.now().toString(36) + Math.random().toString(36).slice(2,8)).toUpperCase();
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+  // init
+  refreshAssets();
+  render();
+
+  [noteEl, assetEl, jdateEl, qtyEl, buyEl, sellEl, sellJdateEl, feeEl].forEach(el => {
+    el.addEventListener("keydown", (e) => { if (e.key === "Enter") addBtn.click(); });
+  });
+})();
+</script>
+</body>
+</html>pچ
